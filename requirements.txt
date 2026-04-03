@@ -1,3 +1,4 @@
 PyQt6>=6.4.0
 pydantic>=2.0.0
 pandas>=2.2.0
+pytest>=9.0.2

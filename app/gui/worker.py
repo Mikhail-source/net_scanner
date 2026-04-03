@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QThread, pyqtSignal
-from core.scanner import NetworkScanner, ScanTarget, PortResult
+from app.core.scanner import NetworkScanner, ScanTarget, PortResult
 import asyncio
 
 class ScannerWorker(QThread):

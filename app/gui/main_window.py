@@ -1,17 +1,16 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QTableWidget, QTableWidgetItem,
                              QProgressBar, QLabel, QMessageBox, QHeaderView)
-from PyQt6.QtCore import Qt, QThread
-from gui.worker import ScannerWorker
-from core.export import export_data
+from PyQt6.QtWidgets import QFileDialog
+from app.gui.worker import ScannerWorker
+from app.core.export import export_data
 
 class MainWindow(QMainWindow):
-    __progres_data = []
-
     def __init__(self):
         super().__init__()
         self.worker: ScannerWorker | None = None
         self.init_ui()
+        self._progres_data: list[dict] = []
 
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
@@ -112,7 +111,19 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def exp_scan(self):
-        export_data(self.__progres_data)
+        if not self._progres_data:
+            QMessageBox.information(self, "Нет данных", "Нечего экспортировать")
+            return
+        
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Сохранить результаты", "scan_results.csv", "CSV Files (*.csv)")
+        
+        if filename:
+            from app.core.export import export_data
+            if export_data(self._progres_data, filename):
+                QMessageBox.information(self, "Успех", f"Данные сохранены в {filename}")
+            else:
+                QMessageBox.critical(self, "Ошибка", "Не удалось сохранить файл")
 
     def stop_scan(self):
         if self.worker and self.worker.isRunning():
@@ -129,11 +140,11 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(result.banner or "-"))
             self._results_count += 1
             self.status_label.setText(f"Найдено открытых: {self._results_count}")
-            self.__progres_data.append([
-                {"Port": result.port},
-                {"Status": result.status},
-                {"Service": result.service},
-                {"Banner": result.banner}])
+            self._progres_data.append({
+                "Port": result.port,
+                "Status": result.status,
+                "Service": result.service,
+                "Banner": result.banner})
 
     def on_finished(self):
         """Вызывается, когда поток завершил работу сам"""
