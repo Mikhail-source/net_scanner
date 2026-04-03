@@ -3,11 +3,10 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QProgressBar, QLabel, QMessageBox, QHeaderView)
 from PyQt6.QtCore import Qt, QThread
 from gui.worker import ScannerWorker
-from ..core.export import export_data
+from core.export import export_data
 
 class MainWindow(QMainWindow):
     __progres_data = []
-    __progres_finish = False
 
     def __init__(self):
         super().__init__()
@@ -40,11 +39,8 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
 
         self.exp_btn = QPushButton("Экспорт")
-        if self.__progres_finish:
-            self.exp_btn.setEnabled(True)
-        else:
-            self.exp_btn.setEnabled(False)
-        self.exp_btn.click.connect(export_data(self.__progres_data))
+        self.exp_btn.clicked.connect(self.exp_scan)
+        self.exp_btn.setEnabled(False)
 
         input_layout.addWidget(QLabel("Хост:"))
         input_layout.addWidget(self.host_input, 2)
@@ -115,6 +111,9 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(self.on_error)
         self.worker.start()
 
+    def exp_scan(self):
+        export_data(self.__progres_data)
+
     def stop_scan(self):
         if self.worker and self.worker.isRunning():
             self.worker.stop()
@@ -130,11 +129,11 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(result.banner or "-"))
             self._results_count += 1
             self.status_label.setText(f"Найдено открытых: {self._results_count}")
-            self.__progres_data.append(
+            self.__progres_data.append([
                 {"Port": result.port},
                 {"Status": result.status},
                 {"Service": result.service},
-                {"Banner": result.banner})
+                {"Banner": result.banner}])
 
     def on_finished(self):
         """Вызывается, когда поток завершил работу сам"""
@@ -143,7 +142,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.hide()
         if not self.status_label.text().startswith("Остановка"):
             self.status_label.setText("Сканирование завершено")
-            self.__progres_finish = True
+            self.exp_btn.setEnabled(True)
         # Не обнуляем self.worker здесь, это сделает closeEvent или новый старт
 
     def on_error(self, msg):
