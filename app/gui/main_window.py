@@ -1,71 +1,109 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QLineEdit, QTableWidget, QTableWidgetItem,
-                             QProgressBar, QLabel, QMessageBox, QHeaderView)
-from PyQt6.QtWidgets import QFileDialog
+                             QPushButton, QLineEdit, QTableWidget,
+                             QTableWidgetItem, QProgressBar, QLabel,
+                             QMessageBox, QHeaderView, QFileDialog, QTabWidget)
 from app.gui.worker import ScannerWorker
 from app.core.export import export_data
+from app.db.repository import ScanHistory
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.worker: ScannerWorker | None = None
+        self.history: ScanHistory | None = None
         self.init_ui()
-        self._progres_data: list[dict] = []
+        self._progress_data: list[dict] = []
 
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
         self.setGeometry(100, 100, 900, 600)
+        self.history = ScanHistory()
 
-        container = QWidget()
-        self.setCentralWidget(container)
-        layout = QVBoxLayout(container)
+        ### ### ### Scanner ### ### ###
+        scaner_tab = QWidget()
+        scaner_layout = QVBoxLayout(scaner_tab)
 
         # --- Ввод данных ---
-        input_layout = QHBoxLayout()
+        input_scanner_layout = QHBoxLayout()
         self.host_input = QLineEdit()
         self.host_input.setPlaceholderText("IP адрес (например, 127.0.0.1)")
         self.host_input.setText("127.0.0.1")
+
+        self.ip_range_input = QLineEdit()
+        self.ip_range_input.setPlaceholderText("Диапазон (опционально): 192.168.1.1-100 или 192.168.1.0/24")
+
+        # Добавляем в layout
+        input_scanner_layout.addWidget(QLabel("IP/Диапазон:"))
+        input_scanner_layout.addWidget(self.host_input, 1)  # Одиночный хост
+        input_scanner_layout.addWidget(self.ip_range_input, 2)  # Диапазон
         
         self.port_input = QLineEdit()
         self.port_input.setPlaceholderText("Порты (например, 1-1000 или 80,443,8080)")
         self.port_input.setText("1-1000")
         
-        self.scan_btn = QPushButton("Старт")
+        self.scan_btn = QPushButton("▶️ Старт")
         self.scan_btn.clicked.connect(self.start_scan)
         
-        self.stop_btn = QPushButton("Стоп")
+        self.stop_btn = QPushButton("⏹️ Стоп")
         self.stop_btn.clicked.connect(self.stop_scan)
         self.stop_btn.setEnabled(False)
 
-        self.exp_btn = QPushButton("Экспорт")
+        self.exp_btn = QPushButton("💾 Экспорт")
         self.exp_btn.clicked.connect(self.exp_scan)
         self.exp_btn.setEnabled(False)
 
-        input_layout.addWidget(QLabel("Хост:"))
-        input_layout.addWidget(self.host_input, 2)
-        input_layout.addWidget(QLabel("Порты:"))
-        input_layout.addWidget(self.port_input, 2)
-        input_layout.addWidget(self.scan_btn)
-        input_layout.addWidget(self.stop_btn)
-        input_layout.addWidget(self.exp_btn)
+        input_scanner_layout.addWidget(QLabel("Порты:"))
+        input_scanner_layout.addWidget(self.port_input, 2)
+        input_scanner_layout.addWidget(self.scan_btn)
+        input_scanner_layout.addWidget(self.stop_btn)
+        input_scanner_layout.addWidget(self.exp_btn)
         
-        layout.addLayout(input_layout)
+        scaner_layout.addLayout(input_scanner_layout)
 
         # --- Прогресс и статус ---
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.hide()
-        layout.addWidget(self.progress_bar)
+        scaner_layout.addWidget(self.progress_bar)
 
         self.status_label = QLabel("Готов к работе")
-        layout.addWidget(self.status_label)
+        scaner_layout.addWidget(self.status_label)
 
         # --- Таблица ---
-        self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["Порт", "Статус", "Сервис", "Баннер"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.table)
+        self.scanner_table = QTableWidget()
+        self.scanner_table.setColumnCount(5)
+        self.scanner_table.setHorizontalHeaderLabels(["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
+        self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        scaner_layout.addWidget(self.scanner_table)
+
+        ### ### ### History ### ### ###
+        history_tab = QWidget()
+
+        history_layout = QVBoxLayout(history_tab)
+        control_history_layout = QHBoxLayout()
+
+        self.save_btn = QPushButton("Сохранить")
+        self.save_btn.clicked.connect(self.history.save_results)
+        control_history_layout.addWidget(self.save_btn)
+
+        self.get_btn = QPushButton("Загрузить")
+        self.get_btn.clicked.connect(self.history.get_history)
+        control_history_layout.addWidget(self.get_btn)
+        
+        # --- Таблица ---
+        self.history_table = QTableWidget()
+        self.history_table.setColumnCount(4)
+        self.history_table.setHorizontalHeaderLabels(["Порт", "Статус", "Обычно использует", "Баннер"])
+        self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        history_layout.addLayout(control_history_layout)
+        history_layout.addWidget(self.history_table)
+
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+        self.tabs.addTab(scaner_tab, "Сканер")
+        self.tabs.addTab(history_tab, "История")
+        self.tabs.currentChanged.connect(self.contain_history)
 
     def parse_ports(self, text: str) -> list[int]:
         ports = []
@@ -85,33 +123,64 @@ class MainWindow(QMainWindow):
         return sorted(set(ports))
 
     def start_scan(self):
-        host = self.host_input.text().strip()
+        # 1. Собираем список хостов
+        hosts = []
+        
+        # Приоритет: если заполнен диапазон — используем его
+        if self.ip_range_input.text().strip():
+            try:
+                from app.core.ip_utils import parse_ip_range
+                hosts = list(parse_ip_range(self.ip_range_input.text()))
+            except Exception:
+                pass  # Если парсинг упал, попробуем взять из host_input
+        
+        # Если диапазон пуст или невалиден — берём одиночный хост
+        if not hosts:
+            host = self.host_input.text().strip()
+            if host:
+                hosts = [host]
+        
+        # Валидация
+        if not hosts:
+            QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
+            return
+        
+        # 2. Парсим порты (как было)
         try:
             ports = self.parse_ports(self.port_input.text())
         except ValueError:
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
 
-        if not host or not ports:
+        if not ports:
             return
 
-        # Сброс UI
+        # 3. Подготовка UI
         self.scan_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
-        self.status_label.setText(f"Сканирование {host}...")
-        self.table.setRowCount(0)
-        self._results_count = 0
+        
+        total_targets = len(hosts) * len(ports)
+        self.status_label.setText(f"План: {len(hosts)} хостов × {len(ports)} портов = {total_targets} проверок")
+        
+        self.scanner_table.setRowCount(0)
+        self._progress_data = []  # Сброс данных
 
-        # Запуск воркера
-        self.worker = ScannerWorker(host, ports)
+        # 4. Запуск воркера
+        # Передаём список хостов вместо одного
+        self.worker = ScannerWorker(hosts, ports)  # ← изменился конструктор!
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)
         self.worker.start()
 
+        self._total_planned = len(hosts) * len(ports)
+        self._progress_count = 0
+        self.progress_bar.setRange(0, self._total_planned)  # Конкретные значения
+        self.progress_bar.setValue(0)
+
     def exp_scan(self):
-        if not self._progres_data:
+        if not self.get_progress_data():
             QMessageBox.information(self, "Нет данных", "Нечего экспортировать")
             return
         
@@ -120,7 +189,7 @@ class MainWindow(QMainWindow):
         
         if filename:
             from app.core.export import export_data
-            if export_data(self._progres_data, filename):
+            if export_data(self.get_progress_data, filename):
                 QMessageBox.information(self, "Успех", f"Данные сохранены в {filename}")
             else:
                 QMessageBox.critical(self, "Ошибка", "Не удалось сохранить файл")
@@ -130,21 +199,30 @@ class MainWindow(QMainWindow):
             self.worker.stop()
             self.status_label.setText("Остановка...")
 
-    def on_progress(self, result):
-        if result.status == "open":
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-            self.table.setItem(row, 0, QTableWidgetItem(str(result.port)))
-            self.table.setItem(row, 1, QTableWidgetItem(result.status))
-            self.table.setItem(row, 2, QTableWidgetItem(result.service))
-            self.table.setItem(row, 3, QTableWidgetItem(result.banner or "-"))
-            self._results_count += 1
-            self.status_label.setText(f"Найдено открытых: {self._results_count}")
-            self._progres_data.append({
-                "Port": result.port,
-                "Status": result.status,
-                "Service": result.service,
-                "Banner": result.banner})
+    def on_progress(self, result: dict):
+        """Теперь result — это словарь с полем 'host'"""
+        if result["status"] == "open":
+            row = self.scanner_table.rowCount()
+            self.scanner_table.insertRow(row)
+            
+            # Добавляем колонку Host первой
+            self.scanner_table.setItem(row, 0, QTableWidgetItem(result["host"]))
+            self.scanner_table.setItem(row, 1, QTableWidgetItem(str(result["port"])))
+            self.scanner_table.setItem(row, 2, QTableWidgetItem(result["status"]))
+            self.scanner_table.setItem(row, 3, QTableWidgetItem(result["service"]))
+            self.scanner_table.setItem(row, 4, QTableWidgetItem(result["banner"] or "-"))
+            
+            # Сохраняем для экспорта
+            self._progress_data.append({
+                "Host": result["host"],
+                "Port": result["port"],
+                "Status": result["status"],
+                "Service": result["service"],
+                "Banner": result["banner"] or ""
+            })
+            
+            self._progress_count += 1
+            self.progress_bar.setValue(self._progress_count)
 
     def on_finished(self):
         """Вызывается, когда поток завершил работу сам"""
@@ -181,3 +259,16 @@ class MainWindow(QMainWindow):
 
         # Разрешаем закрытие приложения
         event.accept()
+
+    def get_progress_data(self):
+        return self._progress_data
+
+    def set_progress_data(self, port, status, service, banner):
+        self._progress_data.append({
+                "Port": port, "Status": status, "Service": service, "Banner": banner})
+        
+    def contain_history(self, tab):
+        if tab == 1:
+            for row in self.get_progress_data():
+                for column_id, value in row:
+                    self.history_table.setItem(column_id, QTableWidgetItem(str(value)))

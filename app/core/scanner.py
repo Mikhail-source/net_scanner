@@ -1,9 +1,7 @@
 import asyncio
-import socket
 from typing import Callable, Optional
-from datetime import datetime
 from pydantic import BaseModel
-from .service import check_service
+from app.core.service import check_service, detect_service_from_banner
 
 class PortResult(BaseModel):
     port: int
@@ -12,7 +10,7 @@ class PortResult(BaseModel):
     banner: Optional[str] = None
 
 class ScanTarget(BaseModel):
-    host: str
+    hosts: list[str]  # ← было host: str, теперь список
     ports: list[int]
 
 class NetworkScanner:
@@ -43,7 +41,9 @@ class NetworkScanner:
             writer.close()
             await writer.wait_closed()
             
-            return PortResult(port=port, status="open", service=check_service(port), banner=banner or None)
+            return PortResult(port=port, status="open",
+                              service=check_service(port),
+                              banner=detect_service_from_banner(banner))
         except asyncio.TimeoutError:
             return PortResult(port=port, status="filtered")
         except ConnectionRefusedError:
@@ -52,27 +52,43 @@ class NetworkScanner:
             return PortResult(port=port, status="filtered")
 
     async def scan(self, target: ScanTarget, progress_callback: Callable):
-        """Основной метод сканирования"""
+        """Сканирование множества хостов и портов"""
         self._is_cancelled = False
-        tasks = []
         
-        for port in target.ports:
+        # Счётчик для прогресса (опционально)
+        total = len(target.hosts) * len(target.ports)
+        current = 0
+        
+        for host in target.hosts:
             if self._is_cancelled:
                 break
-            tasks.append(self.scan_port(target.host, port))
-            
-            # Ограничиваем количество одновременных соединений (чтобы не убить сеть)
-            if len(tasks) >= 100:
-                results = await asyncio.gather(*tasks)
-                for res in results:
-                    progress_callback(res)
-                tasks = []
                 
-                # Даем отрисоваться GUI
-                await asyncio.sleep(0)
-        
-        # Добиваем остатки
-        if tasks and not self._is_cancelled:
-            results = await asyncio.gather(*tasks)
-            for res in results:
-                progress_callback(res)
+            # Сканируем порты для текущего хоста
+            tasks = []
+            for port in target.ports:
+                if self._is_cancelled:
+                    break
+                tasks.append(self._scan_single(host, port, progress_callback))
+                
+                # Батчинг: выполняем пачками по 100 задач, чтобы не забить память
+                if len(tasks) >= 100:
+                    await asyncio.gather(*tasks)
+                    tasks = []
+                    await asyncio.sleep(0)  # Yield control to event loop
+            
+            # Добиваем остаток задач для этого хоста
+            if tasks and not self._is_cancelled:
+                await asyncio.gather(*tasks)
+
+    async def _scan_single(self, host: str, port: int, callback: Callable):
+        """Внутренний метод для сканирования одного хост:порт"""
+        result = await self.scan_port(host, port)
+        # Добавляем хост в результат для отображения
+        result_with_host = {
+            "host": host,
+            "port": result.port,
+            "status": result.status,
+            "service": result.service,
+            "banner": result.banner
+        }
+        callback(result_with_host)

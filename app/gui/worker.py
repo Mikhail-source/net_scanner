@@ -3,23 +3,21 @@ from app.core.scanner import NetworkScanner, ScanTarget, PortResult
 import asyncio
 
 class ScannerWorker(QThread):
-    # Сигналы для общения с GUI
-    progress = pyqtSignal(PortResult)
+    progress = pyqtSignal(dict)  # ← Теперь передаём dict, а не PortResult
     finished = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, host: str, ports: list[int]):
+    def __init__(self, hosts: list[str], ports: list[int]):  # ← hosts вместо host
         super().__init__()
-        self.host = host
+        self.hosts = hosts
         self.ports = ports
         self.scanner = NetworkScanner(timeout=1.0)
 
     def run(self):
-        """Точка входа потока"""
         try:
-            target = ScanTarget(host=self.host, ports=self.ports)
-            
-            # Запускаем asyncio цикл внутри потока
+            # Создаём target со списком хостов
+            from app.core.scanner import ScanTarget
+            target = ScanTarget(hosts=self.hosts, ports=self.ports)
             asyncio.run(self._scan_async(target))
         except Exception as e:
             self.error.emit(str(e))
@@ -27,9 +25,8 @@ class ScannerWorker(QThread):
             self.finished.emit()
 
     async def _scan_async(self, target: ScanTarget):
-        def on_result(result: PortResult):
-            # Отправляем результат в GUI
-            self.progress.emit(result)
+        def on_result(result: dict):
+            self.progress.emit(result)  # Эмитим словарь
         
         await self.scanner.scan(target, on_result)
 
