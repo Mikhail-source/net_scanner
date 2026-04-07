@@ -15,16 +15,16 @@ class MainWindow(QMainWindow):
         self._progress_data: list[dict] = []
 
     def _save_to_db(self):
-        """Сохраняет текущие результаты в БД"""
+        # --- Сохраняет текущие результаты в БД ---
         if not self.get_progress_data():
             QMessageBox.information(self, "Нет данных", "Нечего сохранять")
             return
-        host = self.host_input.text().strip()
+        host = self.ip_range_input.text().strip()
         self.history.save_results(host, self.get_progress_data())
         QMessageBox.information(self, "Успех", "Данные сохранены в БД") 
 
     def _load_from_db(self):
-        """Загружает историю из БД в таблицу"""
+        # --- Загружает историю из БД в таблицу ---
         records = self.history.get_history(limit=100)
         self.history_table.setRowCount(0)
         for row_idx, rec in enumerate(records):
@@ -38,22 +38,18 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 900, 600)
         self.history = ScanHistory()
 
-        ### ### ### Scanner ### ### ###
+        """ """ """ Scanner """ """ """
         scaner_tab = QWidget()
         scaner_layout = QVBoxLayout(scaner_tab)
 
         # --- Ввод данных ---
         input_scanner_layout = QHBoxLayout()
-        self.host_input = QLineEdit()
-        self.host_input.setPlaceholderText("IP адрес (например, 127.0.0.1)")
-        self.host_input.setText("127.0.0.1")
 
         self.ip_range_input = QLineEdit()
-        self.ip_range_input.setPlaceholderText("Диапазон (опционально): 192.168.1.1-100 или 192.168.1.0/24")
+        self.ip_range_input.setPlaceholderText("192.168.1.* или 192.168.1.1-100")
 
         # Добавляем в layout
         input_scanner_layout.addWidget(QLabel("IP/Диапазон:"))
-        input_scanner_layout.addWidget(self.host_input, 1)  # Одиночный хост
         input_scanner_layout.addWidget(self.ip_range_input, 2)  # Диапазон
         
         self.port_input = QLineEdit()
@@ -95,7 +91,7 @@ class MainWindow(QMainWindow):
         self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         scaner_layout.addWidget(self.scanner_table)
 
-        ### ### ### History ### ### ###
+        """ """ """ History """ """ """
         history_tab = QWidget()
 
         history_layout = QVBoxLayout(history_tab)
@@ -142,7 +138,7 @@ class MainWindow(QMainWindow):
         return sorted(set(ports))
 
     def start_scan(self):
-        # 1. Собираем список хостов
+        # Собираем список хостов
         hosts = []
         
         # Приоритет: если заполнен диапазон — используем его
@@ -151,20 +147,10 @@ class MainWindow(QMainWindow):
                 from app.core.ip_utils import parse_ip_range
                 hosts = list(parse_ip_range(self.ip_range_input.text()))
             except Exception:
-                pass  # Если парсинг упал, попробуем взять из host_input
+                QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
+                return
         
-        # Если диапазон пуст или невалиден — берём одиночный хост
-        if not hosts:
-            host = self.host_input.text().strip()
-            if host:
-                hosts = [host]
-        
-        # Валидация
-        if not hosts:
-            QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
-            return
-        
-        # 2. Парсим порты (как было)
+        # Парсим порты
         try:
             ports = self.parse_ports(self.port_input.text())
         except ValueError:
@@ -174,7 +160,7 @@ class MainWindow(QMainWindow):
         if not ports:
             return
 
-        # 3. Подготовка UI
+        # Подготовка UI
         self.scan_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
@@ -185,7 +171,7 @@ class MainWindow(QMainWindow):
         self.scanner_table.setRowCount(0)
         self._progress_data = []  # Сброс данных
 
-        # 4. Запуск воркера
+        # Запуск воркера
         # Передаём список хостов вместо одного
         self.worker = ScannerWorker(hosts, ports)  # ← изменился конструктор!
         self.worker.progress.connect(self.on_progress)
@@ -244,7 +230,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(self._progress_count)
 
     def on_finished(self):
-        """Вызывается, когда поток завершил работу сам"""
+        # Вызывается, когда поток завершил работу сам
         self.scan_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.progress_bar.hide()
@@ -263,17 +249,17 @@ class MainWindow(QMainWindow):
         Без этого метода будет 'QThread: Destroyed while thread is still running'.
         """
         if self.worker and self.worker.isRunning():
-            # 1. Сигнализируем потоку остановиться
+            # Сигнализируем потоку остановиться
             self.worker.stop()
             
-            # 2. Ждем завершения потока (блокируем закрытие GUI на короткое время)
+            # Ждем завершения потока (блокируем закрытие GUI на короткое время)
             # timeout=3000ms защита от зависания навсегда
             if not self.worker.wait(3000):
                 # Если поток не ответил за 3 секунды
                 QMessageBox.warning(self, "Предупреждение", 
                                     "Сканирование не удалось завершить корректно.")
             
-            # 3. Очищаем ссылку
+            # Очищаем ссылку
             self.worker = None
 
         # Разрешаем закрытие приложения
@@ -287,7 +273,7 @@ class MainWindow(QMainWindow):
                 "Port": port, "Status": status, "Service": service, "Banner": banner})
         
     def contain_history(self, index):
-    # """Заполняет вкладку 'История' при переключении"""
+    # Заполняет вкладку 'История' при переключении
         if index != 1:  # 1 — индекс вкладки "История"
             return
         
