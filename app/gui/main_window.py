@@ -14,6 +14,25 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self._progress_data: list[dict] = []
 
+    def _save_to_db(self):
+        """Сохраняет текущие результаты в БД"""
+        if not self.get_progress_data():
+            QMessageBox.information(self, "Нет данных", "Нечего сохранять")
+            return
+        host = self.host_input.text().strip()
+        self.history.save_results(host, self.get_progress_data())
+        QMessageBox.information(self, "Успех", "Данные сохранены в БД") 
+
+    def _load_from_db(self):
+        """Загружает историю из БД в таблицу"""
+        records = self.history.get_history(limit=100)
+        self.history_table.setRowCount(0)
+        for row_idx, rec in enumerate(records):
+            # rec — это кортеж из SQLite: (id, host, port, status, service, banner, scanned_at)
+            self.history_table.insertRow(row_idx)
+            for col_idx, value in enumerate(rec[1:6]):  # Пропускаем id, берём 5 полей
+                self.history_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value or "-")))
+
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
         self.setGeometry(100, 100, 900, 600)
@@ -83,17 +102,17 @@ class MainWindow(QMainWindow):
         control_history_layout = QHBoxLayout()
 
         self.save_btn = QPushButton("Сохранить")
-        self.save_btn.clicked.connect(self.history.save_results)
+        self.save_btn.clicked.connect(lambda: self._save_to_db())
         control_history_layout.addWidget(self.save_btn)
 
         self.get_btn = QPushButton("Загрузить")
-        self.get_btn.clicked.connect(self.history.get_history)
+        self.get_btn.clicked.connect(lambda: self._load_from_db())
         control_history_layout.addWidget(self.get_btn)
         
         # --- Таблица ---
         self.history_table = QTableWidget()
         self.history_table.setColumnCount(4)
-        self.history_table.setHorizontalHeaderLabels(["Порт", "Статус", "Обычно использует", "Баннер"])
+        self.history_table.setHorizontalHeaderLabels(["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
         self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         history_layout.addLayout(control_history_layout)
@@ -189,7 +208,7 @@ class MainWindow(QMainWindow):
         
         if filename:
             from app.core.export import export_data
-            if export_data(self.get_progress_data, filename):
+            if export_data(self.get_progress_data(), filename):
                 QMessageBox.information(self, "Успех", f"Данные сохранены в {filename}")
             else:
                 QMessageBox.critical(self, "Ошибка", "Не удалось сохранить файл")
@@ -221,8 +240,8 @@ class MainWindow(QMainWindow):
                 "Banner": result["banner"] or ""
             })
             
-            self._progress_count += 1
-            self.progress_bar.setValue(self._progress_count)
+        self._progress_count += 1
+        self.progress_bar.setValue(self._progress_count)
 
     def on_finished(self):
         """Вызывается, когда поток завершил работу сам"""
@@ -267,8 +286,23 @@ class MainWindow(QMainWindow):
         self._progress_data.append({
                 "Port": port, "Status": status, "Service": service, "Banner": banner})
         
-    def contain_history(self, tab):
-        if tab == 1:
-            for row in self.get_progress_data():
-                for column_id, value in row:
-                    self.history_table.setItem(column_id, QTableWidgetItem(str(value)))
+    def contain_history(self, index):
+    # """Заполняет вкладку 'История' при переключении"""
+        if index != 1:  # 1 — индекс вкладки "История"
+            return
+        
+        data = self.get_progress_data()
+        if not data:
+            return
+        
+        self.history_table.setRowCount(0)  # Очистка
+        self.history_table.setColumnCount(5)  # Согласуем со сканером
+        self.history_table.setHorizontalHeaderLabels(["Host", "Port", "Status", "Service", "Banner"])
+        
+        for row_idx, row in enumerate(data):
+            self.history_table.insertRow(row_idx)
+            # Сопоставляем ключи словаря с индексами колонок
+            columns = ["Host", "Port", "Status", "Service", "Banner"]
+            for col_idx, key in enumerate(columns):
+                value = row.get(key, "")
+                self.history_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))

@@ -5,7 +5,7 @@ GUI-сканер портов на Python + PyQt6 + asyncio.
 ## 🚀 Установка
 ```bash
 pip install -r requirements.txt
-python -m app/main
+python -m app.main
 
 🎯 Возможности
 
