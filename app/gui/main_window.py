@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from app.gui.worker import ScannerWorker
 from app.core.export import export_data
 from app.db.repository import ScanHistory
+from app.core.ip_utils import parse_ip_range
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -144,7 +145,6 @@ class MainWindow(QMainWindow):
         # Приоритет: если заполнен диапазон — используем его
         if self.ip_range_input.text().strip():
             try:
-                from app.core.ip_utils import parse_ip_range
                 hosts = list(parse_ip_range(self.ip_range_input.text()))
             except Exception:
                 QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
@@ -193,7 +193,6 @@ class MainWindow(QMainWindow):
             self, "Сохранить результаты", "scan_results.csv", "CSV Files (*.csv)")
         
         if filename:
-            from app.core.export import export_data
             if export_data(self.get_progress_data(), filename):
                 QMessageBox.information(self, "Успех", f"Данные сохранены в {filename}")
             else:

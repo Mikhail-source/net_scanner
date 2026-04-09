@@ -1,9 +1,9 @@
 from PyQt6.QtCore import QThread, pyqtSignal
-from app.core.scanner import NetworkScanner, ScanTarget, PortResult
+from app.core.scanner import NetworkScanner, ScanTarget
 import asyncio
 
 class ScannerWorker(QThread):
-    progress = pyqtSignal(dict)  # ← Теперь передаём dict, а не PortResult
+    progress = pyqtSignal(dict)  # ← Теперь передаём dict
     finished = pyqtSignal()
     error = pyqtSignal(str)
 
