@@ -9,6 +9,7 @@
     "68": "DHCP-Client",
     "69": "TFTP",
     "80": "HTTP",
+    "102": "S7-Connection",
     "110": "POP3",
     "123": "NTP",
     "135": "MS-RPC",
@@ -33,6 +34,7 @@
     "5900": "VNC",
     "6379": "Redis",
     "8080": "HTTP-Alt/Proxy",
+    "8193": "Fanuc FOCAS",
     "8443": "HTTPS-Alt",
     "27017": "MongoDB"
 }
