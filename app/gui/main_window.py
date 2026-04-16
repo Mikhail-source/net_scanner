@@ -140,15 +140,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
 
-        if not ports:
-            return
-
         # Подготовка UI
         self.scan_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
         
-        total_targets = len(hosts) * len(ports)
+        total_targets = len(hosts) if len(ports) == 0 else len(hosts) * len(ports)
+
         self.status_label.setText(f"План: {len(hosts)} хостов × {len(ports)} портов = {total_targets} проверок")
         
         self.scanner_table.setRowCount(0)
@@ -156,7 +154,7 @@ class MainWindow(QMainWindow):
 
         # Запуск воркера
         # Передаём список хостов вместо одного
-        self.worker = ScannerWorker(hosts, ports)  # ← изменился конструктор!
+        self.worker = ScannerWorker(hosts, ports)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)

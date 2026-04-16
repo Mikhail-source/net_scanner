@@ -1,4 +1,4 @@
-def parse_ports(text: str) -> list[int]:
+def parse_ports(text: str) -> list:
     """
     Генерирует список портов из строки с поддержкой форматов:
     - Одиночный: "80"
@@ -18,6 +18,8 @@ def parse_ports(text: str) -> list[int]:
                 raise ValueError
         elif '*' in text:
             ports.extend(range(1, 65536))
+        elif text == '':
+            return []
         else:
             try:
                 ports.append(int(part))
