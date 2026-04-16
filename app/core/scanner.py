@@ -2,6 +2,7 @@ import asyncio
 from typing import Callable, Optional
 from pydantic import BaseModel
 from app.core.service import check_service, detect_service_from_banner
+from app.core.ping_utils import async_ping
 
 class PortResult(BaseModel):
     port: int
@@ -20,6 +21,53 @@ class NetworkScanner:
 
     def cancel(self):
         self._is_cancelled = True
+
+    async def ping_host(self, host: str) -> dict:
+        """Пинг хоста, возвращает результат в формате для GUI"""
+        is_alive = await async_ping(host, timeout=self.timeout)
+        return {
+            "host": host,
+            "port": 0,  # 0 = специальный порт для "хост жив"
+            "status": "alive" if is_alive else "dead",
+            "service": "ICMP",
+            "banner": "Host is reachable via ping" if is_alive else "No response"
+        }
+
+    async def scan(self, target: ScanTarget, progress_callback: Callable):
+        """Сканирование: порты ИЛИ пинг, если портов нет"""
+        self._is_cancelled = False
+        
+        if not target.ports:
+            tasks = []
+            for host in target.hosts:
+                if self._is_cancelled:
+                    break
+                tasks.append(self._ping_single(host, progress_callback))
+            
+            # Выполняем пинги батчами
+            for i in range(0, len(tasks), 100):
+                batch = tasks[i:i+100]
+                if batch:
+                    await asyncio.gather(*batch)
+                    await asyncio.sleep(0)
+            return
+
+    async def _ping_single(self, host: str, callback: Callable):
+        """Внутренний метод для пинга одного хоста"""
+        result = await self.ping_host(host)
+        callback(result)
+
+    async def _scan_single(self, host: str, port: int, callback: Callable):
+        """Внутренний метод для сканирования одного хост:порт"""
+        result = await self.scan_port(host, port)
+        result_with_host = {
+            "host": host,
+            "port": result.port,
+            "status": result.status,
+            "service": result.service,
+            "banner": result.banner
+        }
+        callback(result_with_host)
 
     async def scan_port(self, host: str, port: int) -> PortResult:
         """Проверка одного порта"""
@@ -54,10 +102,6 @@ class NetworkScanner:
     async def scan(self, target: ScanTarget, progress_callback: Callable):
         """Сканирование множества хостов и портов"""
         self._is_cancelled = False
-        
-        # Счётчик для прогресса (опционально)
-        total = len(target.hosts) * len(target.ports)
-        current = 0
         
         for host in target.hosts:
             if self._is_cancelled:

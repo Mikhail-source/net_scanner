@@ -144,8 +144,15 @@ class MainWindow(QMainWindow):
         self.scan_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
-        
-        total_targets = len(hosts) if len(ports) == 0 else len(hosts) * len(ports)
+
+        if not ports:
+            # Режим только пинг: 1 проверка на хост
+            total_targets = len(hosts)
+            self.status_label.setText(f"Режим: только ping, {len(hosts)} хостов")
+        else:
+            # Режим сканирования портов
+            total_targets = len(hosts) * len(ports)
+            self.status_label.setText(f"План: {len(hosts)} хостов × {len(ports)} портов = {total_targets}")
 
         self.status_label.setText(f"План: {len(hosts)} хостов × {len(ports)} портов = {total_targets} проверок")
         
@@ -185,14 +192,17 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Остановка...")
 
     def on_progress(self, result: dict):
-        """Теперь result — это словарь с полем 'host'"""
-        if result["status"] == "open":
+        # Показываем и "alive", и открытые порты
+        if result["status"] in ("open", "alive"):
             row = self.scanner_table.rowCount()
             self.scanner_table.insertRow(row)
             
-            # Добавляем колонку Host первой
             self.scanner_table.setItem(row, 0, QTableWidgetItem(result["host"]))
-            self.scanner_table.setItem(row, 1, QTableWidgetItem(str(result["port"])))
+            
+            # Для пинга порт = 0, отображаем как "ICMP"
+            port_display = "ICMP" if result["port"] == 0 else str(result["port"])
+            self.scanner_table.setItem(row, 1, QTableWidgetItem(port_display))
+            
             self.scanner_table.setItem(row, 2, QTableWidgetItem(result["status"]))
             self.scanner_table.setItem(row, 3, QTableWidgetItem(result["service"]))
             self.scanner_table.setItem(row, 4, QTableWidgetItem(result["banner"] or "-"))
@@ -200,14 +210,14 @@ class MainWindow(QMainWindow):
             # Сохраняем для экспорта
             self._progress_data.append({
                 "Host": result["host"],
-                "Port": result["port"],
+                "Port": port_display,
                 "Status": result["status"],
                 "Service": result["service"],
                 "Banner": result["banner"] or ""
             })
             
-        self._progress_count += 1
-        self.progress_bar.setValue(self._progress_count)
+            self._progress_count += 1
+            self.progress_bar.setValue(self._progress_count)
 
     def on_finished(self):
         # Вызывается, когда поток завершил работу сам

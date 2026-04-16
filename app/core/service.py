@@ -46,4 +46,4 @@ def detect_service_from_banner(banner: str) -> str:
         if banner_cache in banner.lower():
             return banner_cache
     
-    return 
+    return "unknown"
