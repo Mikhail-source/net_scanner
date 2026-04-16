@@ -54,6 +54,13 @@ class MainWindow(QMainWindow):
                 ]
                 QApplication.clipboard().setText("\t".join(row_data))
 
+    def _clear_results(self):
+        self.scanner_table.setRowCount(0)
+        self._progress_data = []
+        self._progress_count = 0
+        self.progress_bar.setValue(0)
+        self.status_label.setText("Результаты очищены")
+
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
         self.setGeometry(100, 100, 900, 600)
@@ -84,6 +91,9 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self.stop_scan)
         self.stop_btn.setEnabled(False)
 
+        self.clear_btn = QPushButton("🗑️ Очистить")
+        self.clear_btn.clicked.connect(self._clear_results)
+
         self.exp_btn = QPushButton("💾 Экспорт")
         self.exp_btn.clicked.connect(self.exp_scan)
         self.exp_btn.setEnabled(False)
@@ -92,6 +102,7 @@ class MainWindow(QMainWindow):
         input_scanner_layout.addWidget(self.port_input, 2)
         input_scanner_layout.addWidget(self.scan_btn)
         input_scanner_layout.addWidget(self.stop_btn)
+        input_scanner_layout.addWidget(self.clear_btn)
         input_scanner_layout.addWidget(self.exp_btn)
         
         scaner_layout.addLayout(input_scanner_layout)
@@ -102,9 +113,6 @@ class MainWindow(QMainWindow):
         self.progress_bar.hide()
         scaner_layout.addWidget(self.progress_bar)
 
-        self.status_label = QLabel("Готов к работе")
-        scaner_layout.addWidget(self.status_label)
-
         # --- Таблица ---
         self.scanner_table = QTableWidget()
         self.scanner_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -113,6 +121,9 @@ class MainWindow(QMainWindow):
         self.scanner_table.setHorizontalHeaderLabels(["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
         self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         scaner_layout.addWidget(self.scanner_table)
+
+        self.status_label = QLabel("Готов к работе")
+        scaner_layout.addWidget(self.status_label)
 
         """ """ """ History """ """ """
         history_tab = QWidget()
