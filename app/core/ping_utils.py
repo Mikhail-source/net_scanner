@@ -1,6 +1,8 @@
 import asyncio
 import platform
-import sys
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def async_ping(host: str, timeout: float = 1.0) -> bool:
     """Асинхронный ping хоста"""
@@ -28,7 +30,7 @@ async def async_ping(host: str, timeout: float = 1.0) -> bool:
         return False
     except FileNotFoundError:
         # Утилита ping не найдена
-        print(f"Warning: 'ping' command not found", file=sys.stderr)
+        logger.warning("Ping command not found in PATH")
         return False
     except Exception:
         return False
