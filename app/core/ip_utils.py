@@ -5,7 +5,6 @@ def parse_ip_range(input_str: str) -> Iterator[str]:
     """
     Генерирует список IP-адресов из строки с поддержкой форматов:
     - Одиночный: "192.168.1.1"
-    - CIDR: "192.168.1.0/24"
     - Диапазон: "192.168.1.1-192.168.1.50"
     - Вайлдкард: "192.168.1.*"
     - Список: "192.168.1.1, 192.168.1.5"
@@ -23,11 +22,18 @@ def parse_ip_range(input_str: str) -> Iterator[str]:
     # 2. Обработка вайлдкарда: 192.168.1.* -> 192.168.1.0/24
     if '*' in input_str:
         # Заменяем * на 0 и добавляем маску /24 (для одной звезды)
-        # Можно усложнить логику для 192.168.*.* -> /16
-        network_str = input_str.replace('*', '0') + '/24'
+        # Заменяем * на 0 и добавляем маску /16 (для двух звезд)
+        count = input_str.count("*")
+        suffix = ""
+        match count:
+            case 1: suffix = "/24"
+            case 2: suffix = "/16"
+        network_str = input_str.replace('*', '0') + suffix
         try:
+            yield from iter([f"{input_str.replace('*', '0')}"])
             network = ipaddress.ip_network(network_str, strict=False)
             yield from (str(host) for host in network.hosts())
+            yield from iter([f"{input_str.replace('*', '255')}"])
         except ValueError:
             pass  # Игнорируем невалидные
         return
@@ -48,16 +54,10 @@ def parse_ip_range(input_str: str) -> Iterator[str]:
         except ValueError:
             pass  # Если не диапазон, пробуем дальше
     
-    # 4. Одиночный IP или CIDR
+    # 4. Одиночный IP
     try:
-        # Если это сеть (CIDR), итерируем хосты
-        if '/' in input_str:
-            network = ipaddress.ip_network(input_str, strict=False)
-            yield from (str(host) for host in network.hosts())
-        else:
-            # Просто валидируем одиночный IP
-            ip = ipaddress.ip_address(input_str)
-            yield str(ip)
+        ip = ipaddress.ip_address(input_str)
+        yield str(ip)
     except ValueError:
         # Невалидный ввод — пропускаем
         pass

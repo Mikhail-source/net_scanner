@@ -144,9 +144,8 @@ class MainWindow(QMainWindow):
         
         # Приоритет: если заполнен диапазон — используем его
         if self.ip_range_input.text().strip():
-            try:
-                hosts = list(parse_ip_range(self.ip_range_input.text()))
-            except Exception:
+            hosts = list(parse_ip_range(self.ip_range_input.text()))
+            if not hosts:
                 QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
                 return
         
