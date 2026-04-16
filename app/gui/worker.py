@@ -16,7 +16,6 @@ class ScannerWorker(QThread):
     def run(self):
         try:
             # Создаём target со списком хостов
-            from app.core.scanner import ScanTarget
             target = ScanTarget(hosts=self.hosts, ports=self.ports)
             asyncio.run(self._scan_async(target))
         except Exception as e:

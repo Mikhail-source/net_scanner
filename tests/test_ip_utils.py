@@ -21,9 +21,12 @@ def test_range():
     assert result == [f"192.168.0.{ip}" for ip in range(256)]
 
 def test_true_ip():
-    ip_true = "192.168.0.1"
-    result = list(parse_ip_range(ip_true))
-    assert result == [ip_true]
+    ip_true = ["192.168.0.1",
+                "0.0.0.0",
+                "255.255.255.255"]
+    for i in range(len(ip_true)):
+        result = list(parse_ip_range(ip_true[i]))
+        assert result == [ip_true[i]]
 
 def test_false_ip():
     ip_false = ["192.168.0.a",

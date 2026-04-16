@@ -6,6 +6,7 @@ from app.gui.worker import ScannerWorker
 from app.core.export import export_data
 from app.db.repository import ScanHistory
 from app.core.ip_utils import parse_ip_range
+from app.core.port_utils import parse_ports
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -121,23 +122,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(history_tab, "История")
         self.tabs.currentChanged.connect(self.contain_history)
 
-    def parse_ports(self, text: str) -> list[int]:
-        ports = []
-        for part in text.split(','):
-            part = part.strip()
-            if '-' in part:
-                try:
-                    start, end = map(int, part.split('-'))
-                    ports.extend(range(start, end + 1))
-                except ValueError:
-                    raise ValueError
-            else:
-                try:
-                    ports.append(int(part))
-                except ValueError:
-                    raise ValueError
-        return sorted(set(ports))
-
     def start_scan(self):
         # Собираем список хостов
         hosts = []
@@ -151,7 +135,7 @@ class MainWindow(QMainWindow):
         
         # Парсим порты
         try:
-            ports = self.parse_ports(self.port_input.text())
+            ports = parse_ports(self.port_input.text())
         except ValueError:
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
