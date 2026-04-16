@@ -167,9 +167,9 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(self.on_error)
         self.worker.start()
 
-        self._total_planned = len(hosts) * len(ports)
+        self._total_planned = total_targets
         self._progress_count = 0
-        self.progress_bar.setRange(0, self._total_planned)  # Конкретные значения
+        self.progress_bar.setRange(0, max(1, self._total_planned))  # Защита от 0
         self.progress_bar.setValue(0)
 
     def exp_scan(self):
