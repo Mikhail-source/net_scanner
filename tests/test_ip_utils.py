@@ -1,5 +1,9 @@
 from app.core.ip_utils import parse_ip_range
 
+def test_single_ip():
+    result = list(parse_ip_range("192.168.1.1"))
+    assert result == ["192.168.1.1"]
+
 def test_list():
     ip_list = ", ".join([f"192.168.0.{ip}" for ip in range(100)])
     result = list(parse_ip_range(ip_list))
@@ -35,3 +39,7 @@ def test_false_ip():
     for ip in ip_false:
         result = list(parse_ip_range(ip))
         assert not result
+
+def test_invalid_input():
+        result = list(parse_ip_range("not-an-ip"))
+        assert result == []
