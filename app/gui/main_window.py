@@ -1,8 +1,10 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QTableWidget,
                              QTableWidgetItem, QProgressBar, QLabel,
-                             QMessageBox, QHeaderView, QFileDialog, QTabWidget)
+                             QMessageBox, QHeaderView, QFileDialog, QTabWidget,
+                             QMenu, QApplication)
 from PyQt6.QtGui import QColor
+from PyQt6.QtCore import Qt
 from app.gui.worker import ScannerWorker
 from app.core.export import export_data
 from app.db.repository import ScanHistory
@@ -35,6 +37,22 @@ class MainWindow(QMainWindow):
             self.history_table.insertRow(row_idx)
             for col_idx, value in enumerate(rec[1:6]):  # Пропускаем id, берём 5 полей
                 self.history_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value or "-")))
+
+    def _show_table_menu(self, position):
+        menu = QMenu()
+        copy_action = menu.addAction("📋 Копировать строку")
+        
+        action = menu.exec(self.scanner_table.viewport().mapToGlobal(position))
+        
+        if action == copy_action:
+            row = self.scanner_table.currentRow()
+            if row >= 0:
+                row_data = [
+                    self.scanner_table.item(row, col).text()
+                    for col in range(self.scanner_table.columnCount())
+                    if self.scanner_table.item(row, col)
+                ]
+                QApplication.clipboard().setText("\t".join(row_data))
 
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
@@ -89,6 +107,8 @@ class MainWindow(QMainWindow):
 
         # --- Таблица ---
         self.scanner_table = QTableWidget()
+        self.scanner_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.scanner_table.customContextMenuRequested.connect(self._show_table_menu)
         self.scanner_table.setColumnCount(5)
         self.scanner_table.setHorizontalHeaderLabels(["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
         self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
