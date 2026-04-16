@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QTableWidget,
                              QTableWidgetItem, QProgressBar, QLabel,
                              QMessageBox, QHeaderView, QFileDialog, QTabWidget)
+from PyQt6.QtGui import QColor
 from app.gui.worker import ScannerWorker
 from app.core.export import export_data
 from app.db.repository import ScanHistory
@@ -192,6 +193,18 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Остановка...")
 
     def on_progress(self, result: dict):
+
+        def _get_status_color(status: str):
+            """Возвращает цвет для статуса"""
+            colors = {
+                "open": "#d4edda",    # светло-зелёный
+                "alive": "#cce5ff",   # светло-голубой
+                "closed": "#f8f9fa",  # светло-серый
+                "filtered": "#fff3cd",# светло-жёлтый
+                "dead": "#f8d7da",    # светло-красный
+            }
+            return colors.get(status, "#ffffff")        
+
         # Показываем и "alive", и открытые порты
         if result["status"] in ("open", "alive"):
             row = self.scanner_table.rowCount()
@@ -206,6 +219,12 @@ class MainWindow(QMainWindow):
             self.scanner_table.setItem(row, 2, QTableWidgetItem(result["status"]))
             self.scanner_table.setItem(row, 3, QTableWidgetItem(result["service"]))
             self.scanner_table.setItem(row, 4, QTableWidgetItem(result["banner"] or "-"))
+
+            for col in range(self.scanner_table.columnCount()):
+                item = self.scanner_table.item(row, col)
+                if item:
+                    item.setBackground(QColor(_get_status_color(result["status"])))
+                    item.setForeground(QColor("#000000"))
             
             # Сохраняем для экспорта
             self._progress_data.append({
