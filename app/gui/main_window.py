@@ -6,10 +6,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 from app.gui.worker import ScannerWorker
-from app.core.export import export_data
 from app.db.repository import ScanHistory
-from app.core.ip_utils import parse_ip_range
-from app.core.port_utils import parse_ports
+from app.core.input_parser import InputParser
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -18,6 +16,7 @@ class MainWindow(QMainWindow):
         self.history: ScanHistory | None = None
         self.init_ui()
         self._progress_data: list[dict] = []
+        self.scan: InputParser
 
     def _save_to_db(self):
         # --- Сохраняет текущие результаты в БД ---
@@ -155,20 +154,13 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self.contain_history)
 
     def start_scan(self):
-        # Собираем список хостов
-        hosts = []
-        
-        # Приоритет: если заполнен диапазон — используем его
-        if self.ip_range_input.text().strip():
-            hosts = list(parse_ip_range(self.ip_range_input.text()))
-            if not hosts:
+        self.scan = InputParser()
+        try:
+            scan_request = self.scan.parse(self.ip_range_input.text(), self.port_input.text())
+            if not scan_request.hosts:
                 QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
                 return
-        
-        # Парсим порты
-        try:
-            ports = parse_ports(self.port_input.text())
-        except ValueError:
+        except:
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
 
@@ -177,31 +169,29 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
 
-        if not ports:
+        if scan_request.ping_mode:
             # Режим только пинг: 1 проверка на хост
-            total_targets = len(hosts)
-            self.status_label.setText(f"Режим: только ping, {len(hosts)} хостов")
+            total_targets = len(scan_request.hosts)
+            self.status_label.setText(f"Режим: только ping, {len(scan_request.hosts)} хостов")
         else:
             # Режим сканирования портов
-            total_targets = len(hosts) * len(ports)
-            self.status_label.setText(f"План: {len(hosts)} хостов × {len(ports)} портов = {total_targets}")
+            total_targets = len(scan_request.hosts) * len(scan_request.ports)
+            self.status_label.setText(f"План: {len(scan_request.hosts)} хостов × {len(scan_request.ports)} портов = {total_targets}")
 
-        self.status_label.setText(f"План: {len(hosts)} хостов × {len(ports)} портов = {total_targets} проверок")
-        
+        self.status_label.setText(f"План: {len(scan_request.hosts)} хостов × {len(scan_request.ports)} портов = {total_targets} проверок")
         self.scanner_table.setRowCount(0)
         self._progress_data = []  # Сброс данных
 
         # Запуск воркера
         # Передаём список хостов вместо одного
-        self.worker = ScannerWorker(hosts, ports)
+        self.worker = ScannerWorker(scan_request.hosts, scan_request.ports)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)
         self.worker.start()
 
-        self._total_planned = total_targets
         self._progress_count = 0
-        self.progress_bar.setRange(0, max(1, self._total_planned))  # Защита от 0
+        self.progress_bar.setRange(0, max(1, total_targets))  # Защита от 0
         self.progress_bar.setValue(0)
 
     def exp_scan(self):
@@ -213,7 +203,7 @@ class MainWindow(QMainWindow):
             self, "Сохранить результаты", "scan_results.csv", "CSV Files (*.csv)")
         
         if filename:
-            if export_data(self.get_progress_data(), filename):
+            if self.parser.export(self.get_progress_data(), filename):
                 QMessageBox.information(self, "Успех", f"Данные сохранены в {filename}")
             else:
                 QMessageBox.critical(self, "Ошибка", "Не удалось сохранить файл")
@@ -266,8 +256,8 @@ class MainWindow(QMainWindow):
                 "Banner": result["banner"] or ""
             })
             
-            self._progress_count += 1
-            self.progress_bar.setValue(self._progress_count)
+        self._progress_count += 1
+        self.progress_bar.setValue(self._progress_count)
 
     def on_finished(self):
         # Вызывается, когда поток завершил работу сам

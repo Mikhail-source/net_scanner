@@ -1,7 +1,7 @@
 import ipaddress
 from typing import Iterator
 
-def parse_ip_range(input_str: str) -> Iterator[str]:
+def parse_ip(input_str: str) -> Iterator[str]:
     """
     Генерирует список IP-адресов из строки с поддержкой форматов:
     - Одиночный: "192.168.1.1"
@@ -16,7 +16,7 @@ def parse_ip_range(input_str: str) -> Iterator[str]:
     # 1. Обработка списка (запятые)
     if ',' in input_str:
         for part in input_str.split(','):
-            yield from parse_ip_range(part.strip())
+            yield from parse_ip(part.strip())
         return
     
     # 2. Обработка вайлдкарда: 192.168.1.* -> 192.168.1.0/24
