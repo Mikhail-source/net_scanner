@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QTableWidget,
                              QTableWidgetItem, QProgressBar, QLabel,
                              QMessageBox, QHeaderView, QFileDialog, QTabWidget,
-                             QMenu, QApplication)
+                             QMenu, QApplication, QCheckBox)
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 from app.gui.worker import ScannerWorker
@@ -81,16 +81,27 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Результаты очищены")
 
     def _show_summary(self):
-        top_services = sorted(self._summary["service"].items(),
-                              key=lambda x: x[1], reverse=False)
-
-        QMessageBox.information(self, "Сканирование завершено!",
-        f"""Хостов проверено: {self._summary["check"]}
-        Живых хостов: {self._summary["alive"]}
-        Открытых портов: {self._summary["port"]}
-        Самые частые сервисы:
-            {'\n'.join([f'  {x[0]}: {x[1]}' for x in top_services])}
-        Время: {self._summary["time"]}""")
+        """Показывает статистику после сканирования"""
+        alive_count = len(self._summary["hosts_alive"])  # Уникальные живые хосты
+        
+        # Формируем топ сервисов
+        services = self._summary["services"]
+        top_services = sorted(services.items(), key=lambda x: x[1], reverse=True)[:5]
+        services_str = "\n".join(f"   ├── {svc}: {cnt}" for svc, cnt in top_services)
+        if not services_str:
+            services_str = "   └── (нет данных)"
+        
+        summary = (
+            f"✅ Сканирование завершено!\n"
+            f"├── Хостов проверено: {self._summary['hosts_checked']}\n"
+            f"├── Живых хостов: {alive_count}\n"
+            f"├── Открытых портов: {self._summary['ports_open']}\n"
+            f"├── Зафильтровано: {self._summary['ports_filtered']}\n"
+            f"└── Топ сервисов:\n{services_str}\n"
+            f"Время: {self._summary["time"]}"
+        )
+        
+        QMessageBox.information(self, "📊 Статистика", summary)
 
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
@@ -116,26 +127,34 @@ class MainWindow(QMainWindow):
         self.port_input.setPlaceholderText(
             "Порты (например, 1-1000 или 80,443,8080)")
         self.port_input.setText("1-1000")
+        input_scanner_layout.addWidget(QLabel("Порты:"))
+        input_scanner_layout.addWidget(self.port_input, 2)
+
+        self.force_scan_checkbox = QCheckBox("🔍")
+        self.force_scan_checkbox.setChecked(False)
+        self.force_scan_checkbox.setToolTip(
+        "Если включено: порты сканируются "
+        "даже если хост не отвечает на ping.\n"
+        "Полезно, когда ICMP заблокирован фаерволом, но сервисы доступны."
+)
+        input_scanner_layout.addWidget(self.force_scan_checkbox)
         
         self.scan_btn = QPushButton("▶️ Старт")
         self.scan_btn.clicked.connect(self.start_scan)
+        input_scanner_layout.addWidget(self.scan_btn)
         
         self.stop_btn = QPushButton("⏹️ Стоп")
         self.stop_btn.clicked.connect(self.stop_scan)
         self.stop_btn.setEnabled(False)
+        input_scanner_layout.addWidget(self.stop_btn)
 
         self.clear_btn = QPushButton("🗑️ Очистить")
         self.clear_btn.clicked.connect(self._clear_results)
+        input_scanner_layout.addWidget(self.clear_btn)
 
         self.exp_btn = QPushButton("💾 Экспорт")
         self.exp_btn.clicked.connect(self.exp_scan)
         self.exp_btn.setEnabled(False)
-
-        input_scanner_layout.addWidget(QLabel("Порты:"))
-        input_scanner_layout.addWidget(self.port_input, 2)
-        input_scanner_layout.addWidget(self.scan_btn)
-        input_scanner_layout.addWidget(self.stop_btn)
-        input_scanner_layout.addWidget(self.clear_btn)
         input_scanner_layout.addWidget(self.exp_btn)
         
         scaner_layout.addLayout(input_scanner_layout)
@@ -207,10 +226,12 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
         
-        self._summary = {"check": len(self.scan_request.hosts),
-                         "alive": 0,
-                         "port": 0,
-                         "service": {},
+        self._summary = {"hosts_checked": len(self.scan_request.hosts),
+                         "hosts_alive": set(),
+                         "ports_open": 0,
+                         "ports_closeed": 0,
+                         "ports_filtered": 0,
+                         "services": {},
                          "time": ""}
 
         # Подготовка UI
@@ -239,8 +260,11 @@ class MainWindow(QMainWindow):
 
         # Запуск воркера
         # Передаём список хостов вместо одного
-        self.worker = ScannerWorker(self.scan_request.hosts,
-                                    self.scan_request.ports)
+        self.worker = ScannerWorker(
+            self.scan_request.hosts,
+            self.scan_request.ports,
+            force_scan=self.force_scan_checkbox.isChecked()
+        )       
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)
@@ -274,23 +298,24 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Остановка...")
 
     def on_progress(self, result: dict):
+        host = result["host"]
+        status = result["status"]
         color = self._status_colors.get(result["status"], QColor("#ffffff"))
 
-        # Показываем и "alive", и открытые порты
-        if result["status"] in ("open", "alive"):
-            if result["status"] == "alive":
-                self._summary["alive"] += 1
-            else:
-                self._summary["port"] += 1
+        if status == "alive":
+            self._summary["hosts_alive"].add(host)  # Хост жив по ping
+        elif status == "open":
+            self._summary["hosts_alive"].add(host)  # Хост жив, т.к. порт открыт!
+            self._summary["ports_open"] += 1
+        # Статистика сервисов
+            service = result.get("service", "unknown")
+            self._summary["services"][service] = self._summary["services"].get(service, 0) + 1
+        elif status == "filtered":
+            self._summary["ports_filtered"] += 1
+        elif status == "dead":
+            pass  # Хост мёртв, ничего не считаем
 
-            if (f"{result["service"]}: "
-                f"{result['port']}") in self._summary["service"]:
-                self._summary["service"][f"{result["service"]}: "
-                                         f"{result['port']}"] += 1
-            else:
-                self._summary["service"][f"{result["service"]}: "
-                                         f"{result['port']}"] = 1
-
+        if status not in ["dead", "closed"]:
             row = self.scanner_table.rowCount()
             self.scanner_table.insertRow(row)
             

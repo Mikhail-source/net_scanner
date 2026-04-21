@@ -13,6 +13,7 @@ class PortResult(BaseModel):
 class ScanTarget(BaseModel):
     hosts: list[str]
     ports: list[int]
+    force_scan: bool = False
 
 class NetworkScanner:
     def __init__(self, timeout: float = 1.0):
@@ -84,7 +85,8 @@ class NetworkScanner:
         
         # 🔥 РЕЖИМ ТОЛЬКО ПИНГ
         if not target.ports:
-            ping_tasks = [self._process_ping(host, progress_callback) for host in target.hosts]
+            ping_tasks  = [self._process_ping(
+                host, progress_callback) for host in target.hosts]
             for i in range(0, len(ping_tasks), 100):
                 if self._is_cancelled:
                     break
@@ -98,11 +100,26 @@ class NetworkScanner:
         for host in target.hosts:
             if self._is_cancelled:
                 break
-            port_tasks = [self._process_port(host, port, progress_callback) for port in target.ports]
-            for i in range(0, len(port_tasks), 100):
-                if self._is_cancelled:
-                    break
-                batch = port_tasks[i:i+100]
-                if batch:
-                    await asyncio.gather(*batch)
-                    await asyncio.sleep(0)
+
+            if not target.force_scan:
+                ping_result = await self.ping_host(host)
+                if ping_result["status"] == "dead":
+                    # Хост мёртв и force_scan выключен → пропускаем сканирование портов
+                    progress_callback({
+                        "host": host,
+                        "port": 0,
+                        "status": "dead",
+                        "service": "ICMP",
+                        "banner": "Host unreachable, port scan skipped"
+                    })
+                    continue
+            else:        
+                port_tasks = [self._process_port(
+                    host, port, progress_callback) for port in target.ports]
+                for i in range(0, len(port_tasks), 100):
+                    if self._is_cancelled:
+                        break
+                    batch = port_tasks[i:i+100]
+                    if batch:
+                        await asyncio.gather(*batch)
+                        await asyncio.sleep(0)

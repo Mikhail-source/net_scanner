@@ -7,16 +7,20 @@ class ScannerWorker(QThread):
     finished = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, hosts: list[str], ports: list[int]):
+    def __init__(self, hosts: list[str], ports: list[int], 
+                 force_scan: bool = False):
+        
         super().__init__()
         self.hosts = hosts
         self.ports = ports
+        self.force_scan = force_scan 
         self.scanner = NetworkScanner(timeout=1.0)
 
     def run(self):
         try:
             # Создаём target со списком хостов
-            target = ScanTarget(hosts=self.hosts, ports=self.ports)
+            target = ScanTarget(hosts=self.hosts, ports=self.ports,
+                                force_scan=self.force_scan)
             asyncio.run(self._scan_async(target))
         except Exception as e:
             self.error.emit(str(e))
