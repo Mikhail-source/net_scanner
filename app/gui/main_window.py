@@ -21,6 +21,13 @@ class MainWindow(QMainWindow):
         self._progress_data: list[dict] = []
         self._summary: dict
         self._start_time: datetime
+        self._status_colors = {
+                "open": "#d4edda",    # светло-зелёный
+                "alive": "#cce5ff",   # светло-голубой
+                "closed": "#f8f9fa",  # светло-серый
+                "filtered": "#fff3cd",# светло-жёлтый
+                "dead": "#f8d7da",    # светло-красный
+                }
 
     def _save_to_db(self):
         # --- Сохраняет текущие результаты в БД ---
@@ -62,6 +69,11 @@ class MainWindow(QMainWindow):
                 QApplication.clipboard().setText("\t".join(row_data))
 
     def _clear_results(self):
+        # Если сканирование идёт — блокируем очистку или сначала останавливаем
+        if self.worker and self.worker.isRunning():
+            QMessageBox.warning(self, "Внимание", "Остановите сканирование перед очисткой")
+            return
+
         self.scanner_table.setRowCount(0)
         self._progress_data = []
         self._progress_count = 0
@@ -262,16 +274,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Остановка...")
 
     def on_progress(self, result: dict):
-        def _get_status_color(status: str):
-            """Возвращает цвет для статуса"""
-            colors = {
-                "open": "#d4edda",    # светло-зелёный
-                "alive": "#cce5ff",   # светло-голубой
-                "closed": "#f8f9fa",  # светло-серый
-                "filtered": "#fff3cd",# светло-жёлтый
-                "dead": "#f8d7da",    # светло-красный
-            }
-            return colors.get(status, "#ffffff")        
+        color = self._status_colors.get(result["status"], QColor("#ffffff"))
 
         # Показываем и "alive", и открытые порты
         if result["status"] in ("open", "alive"):
@@ -312,10 +315,8 @@ class MainWindow(QMainWindow):
             for col in range(self.scanner_table.columnCount()):
                 item = self.scanner_table.item(row, col)
                 if item:
-                    item.setBackground(
-                        QColor(_get_status_color(result["status"])))
-                    item.setForeground(
-                        QColor("#000000"))
+                    item.setBackground(QColor(color))
+                    item.setForeground(QColor("#000000"))
             
             # Сохраняем для экспорта
             self._progress_data.append({
