@@ -3,11 +3,11 @@ from app.core.scanner import NetworkScanner, ScanTarget
 import asyncio
 
 class ScannerWorker(QThread):
-    progress = pyqtSignal(dict)  # ← Теперь передаём dict
+    progress = pyqtSignal(dict)
     finished = pyqtSignal()
     error = pyqtSignal(str)
 
-    def __init__(self, hosts: list[str], ports: list[int]):  # ← hosts вместо host
+    def __init__(self, hosts: list[str], ports: list[int]):
         super().__init__()
         self.hosts = hosts
         self.ports = ports

@@ -1,3 +1,4 @@
+from datetime import datetime
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLineEdit, QTableWidget,
                              QTableWidgetItem, QProgressBar, QLabel,
@@ -7,35 +8,42 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 from app.gui.worker import ScannerWorker
 from app.db.repository import ScanHistory
-from app.core.input_parser import InputParser
+from app.core.input_parser import InputParser, ScanRequest
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.worker: ScannerWorker | None = None
         self.history: ScanHistory | None = None
+        self.scan: InputParser
+        self.scan_request: ScanRequest
         self.init_ui()
         self._progress_data: list[dict] = []
-        self.scan: InputParser
+        self._summary: dict
+        self._start_time: datetime
 
     def _save_to_db(self):
         # --- Сохраняет текущие результаты в БД ---
         if not self.get_progress_data():
-            QMessageBox.information(self, "Нет данных", "Нечего сохранять")
+            QMessageBox.information(self,
+                                    "Нет данных", "Нечего сохранять")
             return
         host = self.ip_range_input.text().strip()
         self.history.save_results(host, self.get_progress_data())
-        QMessageBox.information(self, "Успех", "Данные сохранены в БД") 
+        QMessageBox.information(self, "Успех", "Данные сохранены в БД")
 
     def _load_from_db(self):
         # --- Загружает историю из БД в таблицу ---
         records = self.history.get_history(limit=100)
         self.history_table.setRowCount(0)
         for row_idx, rec in enumerate(records):
-            # rec — это кортеж из SQLite: (id, host, port, status, service, banner, scanned_at)
+            # rec — это кортеж из SQLite:
+            # (id, host, port, status, service, banner, scanned_at)
             self.history_table.insertRow(row_idx)
-            for col_idx, value in enumerate(rec[1:6]):  # Пропускаем id, берём 5 полей
-                self.history_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value or "-")))
+            # Пропускаем id, берём 5 полей
+            for col_idx, value in enumerate(rec[1:6]):
+                self.history_table.setItem(row_idx, col_idx,
+                                           QTableWidgetItem(str(value or "-")))
 
     def _show_table_menu(self, position):
         menu = QMenu()
@@ -60,6 +68,18 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.status_label.setText("Результаты очищены")
 
+    def _show_summary(self):
+        top_services = sorted(self._summary["service"].items(),
+                              key=lambda x: x[1], reverse=False)
+
+        QMessageBox.information(self, "Сканирование завершено!",
+        f"""Хостов проверено: {self._summary["check"]}
+        Живых хостов: {self._summary["alive"]}
+        Открытых портов: {self._summary["port"]}
+        Самые частые сервисы:
+            {'\n'.join([f'  {x[0]}: {x[1]}' for x in top_services])}
+        Время: {self._summary["time"]}""")
+
     def init_ui(self):
         self.setWindowTitle("Python Network Scanner")
         self.setGeometry(100, 100, 900, 600)
@@ -73,14 +93,16 @@ class MainWindow(QMainWindow):
         input_scanner_layout = QHBoxLayout()
 
         self.ip_range_input = QLineEdit()
-        self.ip_range_input.setPlaceholderText("192.168.1.* или 192.168.1.1-100")
+        self.ip_range_input.setPlaceholderText(
+            "192.168.1.* или 192.168.1.1-100")
 
         # Добавляем в layout
         input_scanner_layout.addWidget(QLabel("IP/Диапазон:"))
-        input_scanner_layout.addWidget(self.ip_range_input, 2)  # Диапазон
+        input_scanner_layout.addWidget(self.ip_range_input, 2)
         
         self.port_input = QLineEdit()
-        self.port_input.setPlaceholderText("Порты (например, 1-1000 или 80,443,8080)")
+        self.port_input.setPlaceholderText(
+            "Порты (например, 1-1000 или 80,443,8080)")
         self.port_input.setText("1-1000")
         
         self.scan_btn = QPushButton("▶️ Старт")
@@ -114,11 +136,15 @@ class MainWindow(QMainWindow):
 
         # --- Таблица ---
         self.scanner_table = QTableWidget()
-        self.scanner_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.scanner_table.customContextMenuRequested.connect(self._show_table_menu)
+        self.scanner_table.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu)
+        self.scanner_table.customContextMenuRequested.connect(
+            self._show_table_menu)
         self.scanner_table.setColumnCount(5)
-        self.scanner_table.setHorizontalHeaderLabels(["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
-        self.scanner_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.scanner_table.setHorizontalHeaderLabels(
+            ["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
+        self.scanner_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
         scaner_layout.addWidget(self.scanner_table)
 
         self.status_label = QLabel("Готов к работе")
@@ -141,8 +167,10 @@ class MainWindow(QMainWindow):
         # --- Таблица ---
         self.history_table = QTableWidget()
         self.history_table.setColumnCount(4)
-        self.history_table.setHorizontalHeaderLabels(["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
-        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.history_table.setHorizontalHeaderLabels(
+            ["Хост", "Порт", "Статус", "Обычно использует", "Баннер"])
+        self.history_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
 
         history_layout.addLayout(control_history_layout)
         history_layout.addWidget(self.history_table)
@@ -154,37 +182,53 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self.contain_history)
 
     def start_scan(self):
+        self._start_time = datetime.now()
         self.scan = InputParser()
         try:
-            scan_request = self.scan.parse(self.ip_range_input.text(), self.port_input.text())
-            if not scan_request.hosts:
-                QMessageBox.critical(self, "Ошибка", "Введите корректный IP или диапазон")
+            self.scan_request = self.scan.parse(self.ip_range_input.text(),
+                                                self.port_input.text())
+            if not self.scan_request.hosts:
+                QMessageBox.critical(
+                    self, "Ошибка", "Введите корректный IP или диапазон")
                 return
         except:
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
+        
+        self._summary = {"check": len(self.scan_request.hosts),
+                         "alive": 0,
+                         "port": 0,
+                         "service": {},
+                         "time": ""}
 
         # Подготовка UI
         self.scan_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
 
-        if scan_request.ping_mode:
+        total_targets = (len(self.scan_request.hosts) *
+                         max(1, len(self.scan_request.ports)))
+        if self.scan_request.ping_mode:
             # Режим только пинг: 1 проверка на хост
-            total_targets = len(scan_request.hosts)
-            self.status_label.setText(f"Режим: только ping, {len(scan_request.hosts)} хостов")
+            self.status_label.setText(
+                f"Режим: только ping, {len(self.scan_request.hosts)} хостов")
         else:
             # Режим сканирования портов
-            total_targets = len(scan_request.hosts) * len(scan_request.ports)
-            self.status_label.setText(f"План: {len(scan_request.hosts)} хостов × {len(scan_request.ports)} портов = {total_targets}")
+            self.status_label.setText(
+                f"План: {len(self.scan_request.hosts)} хостов × "
+                f"{len(self.scan_request.ports)} портов = {total_targets}")
 
-        self.status_label.setText(f"План: {len(scan_request.hosts)} хостов × {len(scan_request.ports)} портов = {total_targets} проверок")
+        self.status_label.setText(
+            f"План: {len(self.scan_request.hosts)} хостов × "
+            f"{len(self.scan_request.ports)} портов = "
+            f"{total_targets} проверок")
         self.scanner_table.setRowCount(0)
         self._progress_data = []  # Сброс данных
 
         # Запуск воркера
         # Передаём список хостов вместо одного
-        self.worker = ScannerWorker(scan_request.hosts, scan_request.ports)
+        self.worker = ScannerWorker(self.scan_request.hosts,
+                                    self.scan_request.ports)
         self.worker.progress.connect(self.on_progress)
         self.worker.finished.connect(self.on_finished)
         self.worker.error.connect(self.on_error)
@@ -196,17 +240,21 @@ class MainWindow(QMainWindow):
 
     def exp_scan(self):
         if not self.get_progress_data():
-            QMessageBox.information(self, "Нет данных", "Нечего экспортировать")
+            QMessageBox.information(self,
+                                    "Нет данных", "Нечего экспортировать")
             return
         
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Сохранить результаты", "scan_results.csv", "CSV Files (*.csv)")
+            self, "Сохранить результаты", "scan_results.csv",
+            "CSV Files (*.csv)")
         
         if filename:
             if self.parser.export(self.get_progress_data(), filename):
-                QMessageBox.information(self, "Успех", f"Данные сохранены в {filename}")
+                QMessageBox.information(self, "Успех",
+                                        f"Данные сохранены в {filename}")
             else:
-                QMessageBox.critical(self, "Ошибка", "Не удалось сохранить файл")
+                QMessageBox.critical(self, "Ошибка",
+                                     "Не удалось сохранить файл")
 
     def stop_scan(self):
         if self.worker and self.worker.isRunning():
@@ -214,7 +262,6 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Остановка...")
 
     def on_progress(self, result: dict):
-
         def _get_status_color(status: str):
             """Возвращает цвет для статуса"""
             colors = {
@@ -228,24 +275,47 @@ class MainWindow(QMainWindow):
 
         # Показываем и "alive", и открытые порты
         if result["status"] in ("open", "alive"):
+            if result["status"] == "alive":
+                self._summary["alive"] += 1
+            else:
+                self._summary["port"] += 1
+
+            if (f"{result["service"]}: "
+                f"{result['port']}") in self._summary["service"]:
+                self._summary["service"][f"{result["service"]}: "
+                                         f"{result['port']}"] += 1
+            else:
+                self._summary["service"][f"{result["service"]}: "
+                                         f"{result['port']}"] = 1
+
             row = self.scanner_table.rowCount()
             self.scanner_table.insertRow(row)
             
-            self.scanner_table.setItem(row, 0, QTableWidgetItem(result["host"]))
+            self.scanner_table.setItem(row, 0,
+                                       QTableWidgetItem(result["host"]))
             
             # Для пинга порт = 0, отображаем как "ICMP"
-            port_display = "ICMP" if result["port"] == 0 else str(result["port"])
-            self.scanner_table.setItem(row, 1, QTableWidgetItem(port_display))
-            
-            self.scanner_table.setItem(row, 2, QTableWidgetItem(result["status"]))
-            self.scanner_table.setItem(row, 3, QTableWidgetItem(result["service"]))
-            self.scanner_table.setItem(row, 4, QTableWidgetItem(result["banner"] or "-"))
+            if result["port"] == 0:
+                port_display = "ICMP"
+            else:
+                port_display = str(result["port"])
+                
+            self.scanner_table.setItem(
+                row, 1, QTableWidgetItem(port_display))
+            self.scanner_table.setItem(
+                row, 2, QTableWidgetItem(result["status"]))
+            self.scanner_table.setItem(
+                row, 3, QTableWidgetItem(result["service"]))
+            self.scanner_table.setItem(
+                row, 4, QTableWidgetItem(result["banner"] or "-"))
 
             for col in range(self.scanner_table.columnCount()):
                 item = self.scanner_table.item(row, col)
                 if item:
-                    item.setBackground(QColor(_get_status_color(result["status"])))
-                    item.setForeground(QColor("#000000"))
+                    item.setBackground(
+                        QColor(_get_status_color(result["status"])))
+                    item.setForeground(
+                        QColor("#000000"))
             
             # Сохраняем для экспорта
             self._progress_data.append({
@@ -260,6 +330,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(self._progress_count)
 
     def on_finished(self):
+        time = datetime.now() - self._start_time
+        self._summary["time"] = str(time).split('.')[0]
         # Вызывается, когда поток завершил работу сам
         self.scan_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -267,7 +339,9 @@ class MainWindow(QMainWindow):
         if not self.status_label.text().startswith("Остановка"):
             self.status_label.setText("Сканирование завершено")
             self.exp_btn.setEnabled(True)
-        # Не обнуляем self.worker здесь, это сделает closeEvent или новый старт
+        # Не обнуляем self.worker здесь,
+        # это сделает closeEvent или новый старт
+        self._show_summary()
 
     def on_error(self, msg):
         QMessageBox.critical(self, "Ошибка", msg)
@@ -276,7 +350,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """
         КРИТИЧЕСКИ ВАЖНО: Корректное завершение потока при закрытии окна.
-        Без этого метода будет 'QThread: Destroyed while thread is still running'.
+        Без этого будет 'QThread: Destroyed while thread is still running'.
         """
         if self.worker and self.worker.isRunning():
             # Сигнализируем потоку остановиться
@@ -286,8 +360,9 @@ class MainWindow(QMainWindow):
             # timeout=3000ms защита от зависания навсегда
             if not self.worker.wait(3000):
                 # Если поток не ответил за 3 секунды
-                QMessageBox.warning(self, "Предупреждение", 
-                                    "Сканирование не удалось завершить корректно.")
+                QMessageBox.warning(
+                    self, "Предупреждение",
+                    "Сканирование не удалось завершить корректно.")
             
             # Очищаем ссылку
             self.worker = None
@@ -300,7 +375,8 @@ class MainWindow(QMainWindow):
 
     def set_progress_data(self, port, status, service, banner):
         self._progress_data.append({
-                "Port": port, "Status": status, "Service": service, "Banner": banner})
+                "Port": port, "Status": status,
+                "Service": service, "Banner": banner})
         
     def contain_history(self, index):
     # Заполняет вкладку 'История' при переключении
@@ -313,7 +389,8 @@ class MainWindow(QMainWindow):
         
         self.history_table.setRowCount(0)  # Очистка
         self.history_table.setColumnCount(5)  # Согласуем со сканером
-        self.history_table.setHorizontalHeaderLabels(["Host", "Port", "Status", "Service", "Banner"])
+        self.history_table.setHorizontalHeaderLabels(
+            ["Host", "Port", "Status", "Service", "Banner"])
         
         for row_idx, row in enumerate(data):
             self.history_table.insertRow(row_idx)
@@ -321,4 +398,5 @@ class MainWindow(QMainWindow):
             columns = ["Host", "Port", "Status", "Service", "Banner"]
             for col_idx, key in enumerate(columns):
                 value = row.get(key, "")
-                self.history_table.setItem(row_idx, col_idx, QTableWidgetItem(str(value)))
+                self.history_table.setItem(
+                    row_idx, col_idx, QTableWidgetItem(str(value)))
