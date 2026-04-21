@@ -8,25 +8,24 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 from app.gui.worker import ScannerWorker
 from app.db.repository import ScanHistory
-from app.core.input_parser import InputParser, ScanRequest
+from app.core.input_parser import InputParser
+from app.core.export import export_data
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.worker: ScannerWorker | None = None
         self.history: ScanHistory | None = None
-        self.scan: InputParser
-        self.scan_request: ScanRequest
         self.init_ui()
         self._progress_data: list[dict] = []
         self._summary: dict
         self._start_time: datetime
         self._status_colors = {
-                "open": "#d4edda",    # светло-зелёный
-                "alive": "#cce5ff",   # светло-голубой
-                "closed": "#f8f9fa",  # светло-серый
-                "filtered": "#fff3cd",# светло-жёлтый
-                "dead": "#f8d7da",    # светло-красный
+                "open": QColor("#d4edda"),    # светло-зелёный
+                "alive": QColor("#cce5ff"),   # светло-голубой
+                "closed": QColor("#f8f9fa"),  # светло-серый
+                "filtered": QColor("#fff3cd"),# светло-жёлтый
+                "dead": QColor("#f8d7da"),    # светло-красный
                 }
 
     def _save_to_db(self):
@@ -214,11 +213,12 @@ class MainWindow(QMainWindow):
 
     def start_scan(self):
         self._start_time = datetime.now()
-        self.scan = InputParser()
+        parser = InputParser()
+
         try:
-            self.scan_request = self.scan.parse(self.ip_range_input.text(),
+            scan_request = parser.parse(self.ip_range_input.text(),
                                                 self.port_input.text())
-            if not self.scan_request.hosts:
+            if not scan_request.hosts:
                 QMessageBox.critical(
                     self, "Ошибка", "Введите корректный IP или диапазон")
                 return
@@ -226,7 +226,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
         
-        self._summary = {"hosts_checked": len(self.scan_request.hosts),
+        self._summary = {"hosts_checked": len(scan_request.hosts),
                          "hosts_alive": set(),
                          "ports_open": 0,
                          "ports_closeed": 0,
@@ -239,21 +239,21 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
 
-        total_targets = (len(self.scan_request.hosts) *
-                         max(1, len(self.scan_request.ports)))
-        if self.scan_request.ping_mode:
-            # Режим только пинг: 1 проверка на хост
+        total_targets = (len(scan_request.hosts) *
+                         max(1, len(scan_request.ports)))
+        if scan_request.ping_mode:
             self.status_label.setText(
-                f"Режим: только ping, {len(self.scan_request.hosts)} хостов")
+                f"Режим: только ping, {len(scan_request.hosts)} хостов")
         else:
-            # Режим сканирования портов
+            total = (len(scan_request.hosts) * 
+                     max(1, len(scan_request.ports)))
             self.status_label.setText(
-                f"План: {len(self.scan_request.hosts)} хостов × "
-                f"{len(self.scan_request.ports)} портов = {total_targets}")
+                f"План: {len(scan_request.hosts)}"
+                f" × {len(scan_request.ports)} = {total}")
 
         self.status_label.setText(
-            f"План: {len(self.scan_request.hosts)} хостов × "
-            f"{len(self.scan_request.ports)} портов = "
+            f"План: {len(scan_request.hosts)} хостов × "
+            f"{len(scan_request.ports)} портов = "
             f"{total_targets} проверок")
         self.scanner_table.setRowCount(0)
         self._progress_data = []  # Сброс данных
@@ -261,18 +261,19 @@ class MainWindow(QMainWindow):
         # Запуск воркера
         # Передаём список хостов вместо одного
         self.worker = ScannerWorker(
-            self.scan_request.hosts,
-            self.scan_request.ports,
+            scan_request.hosts,
+            scan_request.ports,
             force_scan=self.force_scan_checkbox.isChecked()
         )       
-        self.worker.progress.connect(self.on_progress)
-        self.worker.finished.connect(self.on_finished)
-        self.worker.error.connect(self.on_error)
-        self.worker.start()
 
         self._progress_count = 0
         self.progress_bar.setRange(0, max(1, total_targets))  # Защита от 0
         self.progress_bar.setValue(0)
+
+        self.worker.progress.connect(self.on_progress)
+        self.worker.finished.connect(self.on_finished)
+        self.worker.error.connect(self.on_error)
+        self.worker.start()
 
     def exp_scan(self):
         if not self.get_progress_data():
@@ -285,7 +286,7 @@ class MainWindow(QMainWindow):
             "CSV Files (*.csv)")
         
         if filename:
-            if self.parser.export(self.get_progress_data(), filename):
+            if export_data(self.get_progress_data(), filename):
                 QMessageBox.information(self, "Успех",
                                         f"Данные сохранены в {filename}")
             else:
@@ -340,7 +341,7 @@ class MainWindow(QMainWindow):
             for col in range(self.scanner_table.columnCount()):
                 item = self.scanner_table.item(row, col)
                 if item:
-                    item.setBackground(QColor(color))
+                    item.setBackground(color)
                     item.setForeground(QColor("#000000"))
             
             # Сохраняем для экспорта

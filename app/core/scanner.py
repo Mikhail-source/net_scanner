@@ -113,7 +113,7 @@ class NetworkScanner:
                         "banner": "Host unreachable, port scan skipped"
                     })
                     continue
-            else:        
+                    
                 port_tasks = [self._process_port(
                     host, port, progress_callback) for port in target.ports]
                 for i in range(0, len(port_tasks), 100):
