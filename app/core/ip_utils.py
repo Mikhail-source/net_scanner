@@ -21,8 +21,10 @@ def parse_ip(input_str: str) -> Iterator[str]:
     
     # 2. Обработка вайлдкарда: 192.168.1.* -> 192.168.1.0/24
     if '*' in input_str:
-        # Заменяем * на 0 и добавляем маску /24 (для одной звезды)
-        # Заменяем * на 0 и добавляем маску /16 (для двух звезд)
+        """
+        Заменяем * на 0 и добавляем маску /24 (для одной звезды)
+        Заменяем * на 0 и добавляем маску /16 (для двух звезд)
+        """
         count = input_str.count("*")
         suffix = ""
         match count:
@@ -39,7 +41,7 @@ def parse_ip(input_str: str) -> Iterator[str]:
         return
     
     # 3. Обработка диапазона: 192.168.1.1-192.168.1.50
-    if '-' in input_str and '/' not in input_str:
+    if '-' in input_str:
         try:
             start_str, end_str = input_str.split('-')
             start_ip = ipaddress.ip_address(start_str.strip())

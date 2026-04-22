@@ -10,6 +10,7 @@ from app.gui.worker import ScannerWorker
 from app.db.repository import ScanHistory
 from app.core.input_parser import InputParser
 from app.core.export import export_data
+from app.core.updater import check_update
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -129,7 +130,7 @@ class MainWindow(QMainWindow):
         input_scanner_layout.addWidget(QLabel("Порты:"))
         input_scanner_layout.addWidget(self.port_input, 2)
 
-        self.force_scan_checkbox = QCheckBox("🔍")
+        self.force_scan_checkbox = QCheckBox("🔥")
         self.force_scan_checkbox.setChecked(False)
         self.force_scan_checkbox.setToolTip(
         "Если включено: порты сканируются "
@@ -211,10 +212,15 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(history_tab, "История")
         self.tabs.currentChanged.connect(self.contain_history)
 
-    def start_scan(self):
-        self._start_time = datetime.now()
-        parser = InputParser()
+        new_ver = check_update("0.1.0")
+        if new_ver:
+            self.status_label.setText(
+                f"Доступна версия {new_ver}! Проверь GitHub.")
 
+    def start_scan(self):
+        MAX_HOSTS = 1024
+        MAX_PORTS = 1024
+        parser = InputParser()
         try:
             scan_request = parser.parse(self.ip_range_input.text(),
                                                 self.port_input.text())
@@ -226,7 +232,21 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Ошибка", "Неверный формат портов")
             return
         
-        self._summary = {"hosts_checked": len(scan_request.hosts),
+        hosts = scan_request.hosts
+        ports = scan_request.ports
+    
+        if len(hosts) > MAX_HOSTS or len(ports) > MAX_PORTS:
+            reply = QMessageBox.warning(
+                self, "Большой диапазон",
+                f"Запрошено {len(hosts)} хостов × {len(ports)} портов.\n"
+                f"Это может занять много времени. Продолжить?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+        self._start_time = datetime.now()
+        
+        self._summary = {"hosts_checked": len(hosts),
                          "hosts_alive": set(),
                          "ports_open": 0,
                          "ports_closeed": 0,
@@ -239,30 +259,24 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.progress_bar.show()
 
-        total_targets = (len(scan_request.hosts) *
-                         max(1, len(scan_request.ports)))
+        total_targets = (len(hosts) * max(1, len(ports)))
         if scan_request.ping_mode:
             self.status_label.setText(
-                f"Режим: только ping, {len(scan_request.hosts)} хостов")
+                f"Режим: только ping, {len(hosts)} хостов")
         else:
-            total = (len(scan_request.hosts) * 
-                     max(1, len(scan_request.ports)))
-            self.status_label.setText(
-                f"План: {len(scan_request.hosts)}"
-                f" × {len(scan_request.ports)} = {total}")
+            total = (len(hosts) * max(1, len(ports)))
+            self.status_label.setText(f"План: {len(hosts)}"
+                                      f" × {len(ports)} = {total}")
 
-        self.status_label.setText(
-            f"План: {len(scan_request.hosts)} хостов × "
-            f"{len(scan_request.ports)} портов = "
-            f"{total_targets} проверок")
+        self.status_label.setText(f"План: {len(hosts)} хостов × "
+                                  f"{len(ports)} портов = "
+                                  f"{total_targets} проверок")
         self.scanner_table.setRowCount(0)
         self._progress_data = []  # Сброс данных
 
         # Запуск воркера
         # Передаём список хостов вместо одного
-        self.worker = ScannerWorker(
-            scan_request.hosts,
-            scan_request.ports,
+        self.worker = ScannerWorker(hosts, ports,
             force_scan=self.force_scan_checkbox.isChecked()
         )       
 

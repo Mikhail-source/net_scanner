@@ -8,15 +8,19 @@ _banners_cache: list = []
 _is_loaded = False
 
 def _load_services():
-    """Загружает базу сервисов в память"""
+    """
+    Загружает базу сервисов в память
+    """
     global _services_cache, _is_loaded
     global _banners_cache
     
     if _is_loaded:
         return
 
-    # Надежное построение пути (работает на Windows, Linux, Mac)
-    # Ищем файл data/service.json относительно текущей папки core
+    """
+    Надежное построение пути (работает на Windows, Linux, Mac)
+    Ищем файл data/service.json относительно текущей папки core
+    """
     base_dir = Path(__file__).resolve().parent.parent
     json_path = base_dir / "data" / "service.json"
 
