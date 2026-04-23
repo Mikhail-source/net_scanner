@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write 
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -31,6 +34,7 @@ jobs:
         pyinstaller --name NetScanner `
                     --onefile `
                     --windowed `
+                    --collect-all app `
                     --hidden-import=pydantic `
                     --hidden-import=PyQt6.QtCore `
                     --hidden-import=PyQt6.QtGui `
