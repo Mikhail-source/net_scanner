@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 from typing import Dict
+from app.utils.path_helper import get_resource_path
 
-# Глобальная переменная для кэширования данных (загружается 1 раз при импорте)
 _services_cache: Dict[str, str] = {}
 _banners_cache: list = []
 _is_loaded = False
@@ -21,8 +21,7 @@ def _load_services():
     Надежное построение пути (работает на Windows, Linux, Mac)
     Ищем файл data/service.json относительно текущей папки core
     """
-    base_dir = Path(__file__).resolve().parent.parent
-    json_path = base_dir / "data" / "service.json"
+    json_path = get_resource_path("app/data/service.json")
 
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
@@ -31,11 +30,12 @@ def _load_services():
             _banners_cache = [item.lower() for item in list(data.values())]
             _is_loaded = True
     except FileNotFoundError:
-        print(f"Warning: {json_path} not found. Services will be 'unknown'.")
-        _services_cache = {}
-        _is_loaded = True # Помечаем как загружено, чтобы не пытаться снова
+        alt_path = Path(__file__).parent.parent / "data" / "service.json"
+        if alt_path.exists():
+            with open(alt_path, 'r', encoding='utf-8') as f:
+                _services_cache = json.load(f)
+        _is_loaded = True
     except json.JSONDecodeError:
-        print(f"Error: {json_path} is not valid JSON.")
         _services_cache = {}
         _is_loaded = True
 
