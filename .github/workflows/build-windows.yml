@@ -3,8 +3,8 @@ name: Build Windows EXE
 on:
   push:
     tags:
-      - 'v*'  # Запуск при создании тега вида v1.0.0
-  workflow_dispatch:  # Ручной запуск из интерфейса GitHub
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -26,28 +26,26 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: 🔨 Build EXE with PyInstaller
-      shell: cmd
+    - name: 🔨 Build EXE
       run: |
-        pyinstaller --name NetScanner ^
-                    --onefile ^
-                    --windowed ^
-                    --icon=NONE ^
-                    --hidden-import=pydantic ^
-                    --hidden-import=PyQt6.QtCore ^
-                    --hidden-import=PyQt6.QtGui ^
-                    --hidden-import=PyQt6.QtWidgets ^
-                    --hidden-import=PyQt6.sip ^
+        pyinstaller --name NetScanner `
+                    --onefile `
+                    --windowed `
+                    --hidden-import=pydantic `
+                    --hidden-import=PyQt6.QtCore `
+                    --hidden-import=PyQt6.QtGui `
+                    --hidden-import=PyQt6.QtWidgets `
+                    --hidden-import=PyQt6.sip `
                     app/main.py
 
-    - name: 📦 Upload artifact
+    - name: 📦 Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: NetScanner-Windows
         path: dist/NetScanner.exe
         retention-days: 30
 
-    - name: 🚀 Create Release (если тег)
+    - name: 🚀 Create Release
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
       with:
